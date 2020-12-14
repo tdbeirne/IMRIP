@@ -4,20 +4,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 import time
 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 
 import numpy as np
 import glob
-
-
-#https://github.com/hubutui/DiceLoss-PyTorch/blob/master/loss.py
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 
 #Simple layout for a network in PyTorch
 #https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
@@ -47,9 +37,18 @@ class Net(nn.Module):
 
         return x
 
+#check if CUDA is available
+if torch.cuda.is_available():
+    print("Using CUDA")
+
+
 net = Net()
-criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, 10000, 10000, 10000]))
-optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+
+#load onto GPU
+net = net.cuda()
+
+criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, 131.4, 53.3, 163.1]).cuda())
+optimizer = optim.SGD(net.parameters(), lr=0.005, momentum=0.9)
 
 #load data
 data_files = sorted(glob.glob("./data/train/*imgs.npy"))
@@ -59,33 +58,66 @@ data_tensors = []
 label_tensors = []
 
 for data_file in data_files:
-    data_tensors.append(torch.from_numpy(np.load(data_file)))
+    #convert from npy file to PyTorch tensor
+    data_tensor = torch.from_numpy(np.load(data_file))
+
+    #convert to 5D tensor of size 1
+    data_tensor = torch.unsqueeze(data_tensor, 0)
+
+    #resize tensor
+    data_tensors.append(F.interpolate(input=data_tensor, size=(128, 128, 128), mode="trilinear"))
 
 for label_file in label_files:
-    label_tensors.append(torch.from_numpy(np.load(label_file)))
+    #convert from npy file to PyTorch tensor
+    label_tensor = torch.from_numpy(np.load(label_file))
 
-num_times = 0
-for epoch in range(3):
-    running_loss = 0.0
-    for data, label in zip(data_tensors, label_tensors):
-        start_time = time.time()
+    #convert to 5D tensor of size 1
+    label_tensor = torch.unsqueeze(label_tensor, 0)
+    label_tensor = torch.unsqueeze(label_tensor, 0)
 
+    #resize tensors
+    label_tensors.append(F.interpolate(input=label_tensor, size=(128, 128, 128), mode="trilinear"))
+
+#create data stack and label stack
+data_stack = torch.cat(data_tensors, dim=0)
+label_stack = torch.cat(label_tensors, dim=0)
+
+#squeeze labels back down and change data type for cross entropy
+label_stack = torch.squeeze(label_stack, dim=1)
+label_stack = label_stack.long()
+
+#create dataset out of stacks
+dataset = TensorDataset(data_stack, label_stack)
+loader = DataLoader(dataset=dataset, batch_size=16, shuffle=True)
+
+batch_size = 10
+num_epochs = 20
+losses = []
+
+#Resource I used for building a simple model trainer
+#https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
+
+for epoch in range(num_epochs):
+    epoch_start_time = time.time()
+    running_loss = 0
+    for x_batch, y_batch in loader:
+        x_batch,y_batch = x_batch.cuda(), y_batch.cuda()
+
+        batch_start_time = time.time()
+        #zero out gradients because we are working on a new batch
         optimizer.zero_grad()
 
-        outputs = net(torch.unsqueeze(data, 0))
-        loss = criterion(outputs, torch.unsqueeze(label.long(), 0))
+        outputs = net(x_batch)
+        loss = criterion(outputs, y_batch)
         loss.backward()
         optimizer.step()
 
         running_loss += loss.item()
-
-        num_times += 1
-        print("COMPLETED {} ITEMS IN {} SECONDS".format(num_times, time.time() - start_time))
-
-    print(running_loss / len(data_files))
+    print("COMPLETED EPOCH {} IN {} SECONDS".format(epoch, time.time() -  epoch_start_time))
+    print("EPOCH AVERAGE LOSS: {}".format(running_loss / 12.75))
 
 
-output_path = './meme3.pth'
+output_path = './model_3.pth'
 torch.save(net.state_dict(), output_path)
 
 print("DONE TRAINING")

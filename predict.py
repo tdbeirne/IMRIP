@@ -26,14 +26,13 @@ class Net(nn.Module):
 
 
 net = Net()
-net.load_state_dict(torch.load("./meme3.pth"))
+net.load_state_dict(torch.load("./model_2.pth"))
 
 data_files = sorted(glob.glob("./data/validation/*imgs.npy"))
 
 data_tensors = []
 
 for data_file in data_files:
-    print(data_file)
     id = data_file.split("_")[0][-3:]
 
     data_mat = np.load(data_file)
@@ -42,7 +41,7 @@ for data_file in data_files:
 
     output = net(data_tensor)
     output = output.squeeze()
-    #print(output.shape)
+    print(output.shape)
     _, prediction = torch.max(output, dim=0, keepdim=False)
     prediction_as_mat = prediction.numpy()
     prediction_as_mat = prediction_as_mat.astype(np.float32)

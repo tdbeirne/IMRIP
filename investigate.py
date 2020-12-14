@@ -9,6 +9,9 @@ one_voxels = 0
 two_voxels = 0
 three_voxels = 0
 
+largest_dims = [0, 0, 0]
+smallest_dims = [300, 300, 300]
+
 for label_file in label_files:
     mat = np.load(label_file)
 
@@ -19,11 +22,23 @@ for label_file in label_files:
     three_voxels += np.count_nonzero(mat == 3)
 
 
+    for i in range(len(np.shape(mat))):
+        #print(np.shape(mat))
+        if np.shape(mat)[i] > largest_dims[i]:
+            largest_dims[i] = np.shape(mat)[i]
+
+        if np.shape(mat)[i] < smallest_dims[i]:
+            smallest_dims[i] = np.shape(mat)[i]
+
+
 print(total_voxels)
 print(zero_voxels / zero_voxels)
 print(zero_voxels / one_voxels)
 print(zero_voxels / two_voxels)
 print(zero_voxels / three_voxels)
+
+print(largest_dims)
+print(smallest_dims)
 # print(data[0][100][100][100])
 # img = Image.fromarray(200 * data[0][100], "F")
 
