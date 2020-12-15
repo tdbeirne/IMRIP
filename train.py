@@ -24,17 +24,36 @@ class Net(nn.Module):
         super(Net, self).__init__()
 
         #1 3D input image with 4 channels
-        self.conv1 = nn.Conv3d(in_channels=4, out_channels=4, kernel_size=(2,2,2), stride=1, padding=0)
-        self.conv2 = nn.Conv3d(in_channels=4, out_channels=4, kernel_size=(2,2,2), stride=1, padding=0)
-        self.upscale_1 = nn.ConvTranspose3d(in_channels=4, out_channels=4, kernel_size=(2,2,2), stride=1, padding=0)
-        self.upscale_2 = nn.ConvTranspose3d(in_channels=4, out_channels=4, kernel_size=(2,2,2), stride=1, padding=0)
+        self.batch_norm0 = nn.BatchNorm3d(num_features=4)
+        self.conv1 = nn.Conv3d(in_channels=4, out_channels=4, kernel_size=(2,2,2), stride=2, padding=0)
+        self.pool1 = nn.MaxPool3d(kernel_size=(2,2,2))
+        self.batch_norm1 = nn.BatchNorm3d(num_features=4)
+        self.conv2 = nn.Conv3d(in_channels=4, out_channels=4, kernel_size=(2,2,2), stride=2, padding=0)
+        self.pool2 = nn.MaxPool3d(kernel_size=(2,2,2))
+        self.batch_norm2 = nn.BatchNorm3d(num_features=4)
+        self.upscale_1 = nn.Upsample(scale_factor=4, mode="trilinear")
+        self.batch_norm3 = nn.BatchNorm3d(num_features=4)
+        self.upscale_2 = nn.Upsample(scale_factor=4, mode="trilinear")
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.upscale_1(x))
-        x = F.relu(self.upscale_2(x))
+        #print(x.shape)
+        x = self.batch_norm0(x)
+        #print(x.shape)
 
+        x = self.pool1(F.relu(self.conv1(x)))
+        x = self.batch_norm1(x)
+        #print(x.shape)
+
+        x = self.pool2(F.relu(self.conv2(x)))
+        x = self.batch_norm2(x)
+
+        #print(x.shape)
+        x = F.relu(self.upscale_1(x))
+        #print(x.shape)
+        x = self.batch_norm3(x)
+        #print(x.shape)
+        x = F.relu(self.upscale_2(x))
+        #print(x.shape)
         return x
 
 #check if CUDA is available
@@ -47,7 +66,8 @@ net = Net()
 #load onto GPU
 net = net.cuda()
 
-criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, 131.4, 53.3, 163.1]).cuda())
+#[1.0, 131.4, 53.3, 163.1]
+criterion = nn.CrossEntropyLoss(weight=torch.FloatTensor([1.0, 300, 300, 300]).cuda())
 optimizer = optim.SGD(net.parameters(), lr=0.005, momentum=0.9)
 
 #load data
@@ -90,6 +110,9 @@ label_stack = label_stack.long()
 dataset = TensorDataset(data_stack, label_stack)
 loader = DataLoader(dataset=dataset, batch_size=16, shuffle=True)
 
+#print(label_stack.shape)
+#print(data_stack.shape)
+
 batch_size = 10
 num_epochs = 20
 losses = []
@@ -103,11 +126,16 @@ for epoch in range(num_epochs):
     for x_batch, y_batch in loader:
         x_batch,y_batch = x_batch.cuda(), y_batch.cuda()
 
+
+        #print(x_batch.shape)
+        #print(y_batch.shape)
+
         batch_start_time = time.time()
         #zero out gradients because we are working on a new batch
         optimizer.zero_grad()
 
         outputs = net(x_batch)
+        #print(outputs.shape)
         loss = criterion(outputs, y_batch)
         loss.backward()
         optimizer.step()
@@ -117,7 +145,7 @@ for epoch in range(num_epochs):
     print("EPOCH AVERAGE LOSS: {}".format(running_loss / 12.75))
 
 
-output_path = './model_3.pth'
+output_path = './model_2.pth'
 torch.save(net.state_dict(), output_path)
 
 print("DONE TRAINING")
